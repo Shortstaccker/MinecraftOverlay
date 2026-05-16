@@ -1,0 +1,23 @@
+{
+	"schemaVersion": 1,
+	"id": "minecraftoverlay",
+	"version": "${version}",
+	"name": "MinecraftOverlay",
+	"description": "A basic Fabric mod.",
+	"authors": [
+		"Me"
+	],
+	"entrypoints": {
+		"main": [
+			"com.minecraftoverlay.MinecraftOverlay"
+		],
+		"client": [
+			"com.minecraftoverlay.MinecraftOverlay"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.17.3",
+		"minecraft": "~1.21.11",
+		"java": ">=21"
+	}
+}

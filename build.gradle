@@ -1,0 +1,152 @@
+plugins {
+	id 'fabric-loom' version "${loom_version}"
+}
+
+import java.util.regex.Pattern
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	exclusiveContent {
+		forRepository {
+			maven {
+				url = "https://api.modrinth.com/maven"
+			}
+		}
+		filter {
+			includeGroup "maven.modrinth"
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+	modImplementation "maven.modrinth:mcef-modern:${project.mcef_modern_version}"
+	include "maven.modrinth:mcef-modern:${project.mcef_modern_version}"
+	implementation "org.apache.commons:commons-compress:1.28.0"
+	include "org.apache.commons:commons-compress:1.28.0"
+
+	def featherLibraryRoot = System.getenv("APPDATA") == null ? null : file("${System.getenv("APPDATA")}/.minecraft/libraries/java/net/digitalingot")
+	def featherFcefJar = featherLibraryRoot == null ? null : new File(featherLibraryRoot, "fcef/0.1.1/fcef-0.1.1.jar")
+	def featherFjniJar = featherLibraryRoot == null ? null : new File(featherLibraryRoot, "fjni/0.0.2/fjni-0.0.2.jar")
+	if (featherFcefJar != null && featherFcefJar.exists() && featherFjniJar != null && featherFjniJar.exists()) {
+		compileOnly files(featherFcefJar, featherFjniJar)
+	}
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 21
+}
+
+java {
+	withSourcesJar()
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+}
+
+jar {
+	from("LICENSE") {
+		def archiveBaseName = project.archives_base_name
+		rename { "${it}_${archiveBaseName}" }
+	}
+}
+
+tasks.named("remapJar").configure {
+	doLast {
+		def outerJar = archiveFile.get().asFile
+		def replacementClass = layout.buildDirectory.file("classes/java/main/me/friwi/jcefmaven/impl/step/extract/TarGzExtractor.class").get().asFile
+		if (!outerJar.isFile() || !replacementClass.isFile()) return
+
+		def mcefEntryName = findZipEntry(outerJar, ~/META-INF\/jars\/mcef-modern-.*\.jar/)
+		if (mcefEntryName == null) return
+
+		def mcefJar = new File(temporaryDir, "mcef-modern-patched.jar")
+		mcefJar.bytes = readZipEntry(outerJar, mcefEntryName)
+
+		def jcefEntryName = findZipEntry(mcefJar, ~/META-INF\/jars\/jcefmaven-.*\.jar/)
+		if (jcefEntryName == null) return
+
+		def jcefJar = new File(temporaryDir, "jcefmaven-patched.jar")
+		jcefJar.bytes = readZipEntry(mcefJar, jcefEntryName)
+
+		replaceZipEntries(jcefJar, [
+			"me/friwi/jcefmaven/impl/step/extract/TarGzExtractor.class": replacementClass.bytes
+		])
+		replaceZipEntries(mcefJar, [(jcefEntryName): jcefJar.bytes])
+		replaceZipEntries(outerJar, [(mcefEntryName): mcefJar.bytes])
+	}
+}
+
+static String findZipEntry(File zipFile, Pattern pattern) {
+	def zip = new java.util.zip.ZipFile(zipFile)
+	try {
+		return zip.entries().find { pattern.matcher(it.name).matches() }?.name
+	} finally {
+		zip.close()
+	}
+}
+
+static byte[] readZipEntry(File zipFile, String entryName) {
+	def zip = new java.util.zip.ZipFile(zipFile)
+	try {
+		def entry = zip.getEntry(entryName)
+		if (entry == null) return null
+		return zip.getInputStream(entry).bytes
+	} finally {
+		zip.close()
+	}
+}
+
+static void replaceZipEntries(File zipFile, Map<String, byte[]> replacements) {
+	def tempFile = new File(zipFile.parentFile, zipFile.name + ".tmp")
+	def remaining = new LinkedHashMap<String, byte[]>(replacements)
+	def input = new java.util.zip.ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))
+	def output = new java.util.zip.ZipOutputStream(new BufferedOutputStream(new FileOutputStream(tempFile)))
+	try {
+		java.util.zip.ZipEntry entry
+		byte[] buffer = new byte[8192]
+		while ((entry = input.nextEntry) != null) {
+			def replacement = remaining.remove(entry.name)
+			def next = new java.util.zip.ZipEntry(entry.name)
+			next.time = entry.time
+			output.putNextEntry(next)
+			if (replacement != null) {
+				output.write(replacement)
+			} else if (!entry.directory) {
+				int read
+				while ((read = input.read(buffer)) != -1) {
+					output.write(buffer, 0, read)
+				}
+			}
+			output.closeEntry()
+			input.closeEntry()
+		}
+		remaining.each { name, bytes ->
+			output.putNextEntry(new java.util.zip.ZipEntry(name))
+			output.write(bytes)
+			output.closeEntry()
+		}
+	} finally {
+		output.close()
+		input.close()
+	}
+	if (!zipFile.delete() || !tempFile.renameTo(zipFile)) {
+		throw new GradleException("Could not replace entries in ${zipFile}")
+	}
+}
