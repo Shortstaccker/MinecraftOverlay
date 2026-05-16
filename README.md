@@ -2,7 +2,7 @@
 
 Minecraft Overlay is a modern in-game desktop and browser overlay for Minecraft, designed to let you browse, multitask, and access tools without leaving the game.
 
-Built with a clean and customizable interface, the mod adds draggable windows, multi-tab browsing, floating widgets, notes, calculators, timers, Spotify controls, and more — all directly inside Minecraft.
+Built with a clean and customizable interface, the mod adds draggable windows, multi-tab browsing, floating widgets, notes, calculators, timers, Spotify controls, and more all directly inside Minecraft.
 
 Features:
 
