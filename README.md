@@ -37,6 +37,7 @@ Perfect for:
 • Productivity and utility tools
 
 • Streamers and content creators
+
 • Players who hate alt-tabbing
 
 The project is still actively being improved, with future plans including more widgets, overlay APIs, custom apps, and expanded browser functionality.
